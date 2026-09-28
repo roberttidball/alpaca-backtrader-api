@@ -30,7 +30,7 @@ def test_request_uses_client_timeout_when_not_overridden():
     assert urlopen.call_args.kwargs["timeout"] == 7
 
 
-def test_request_builds_url_with_query_and_api_key():
+def test_request_sends_api_key_header_not_query():
     client = FXMacroDataClient(
         api_key="test-key", base_url="https://example.test/v1"
     )
@@ -39,7 +39,18 @@ def test_request_builds_url_with_query_and_api_key():
     ) as urlopen:
         result = client.request("/calendar/usd", {"limit": 5})
     req = urlopen.call_args.args[0]
-    assert req.full_url == (
-        "https://example.test/v1/calendar/usd?limit=5&api_key=test-key"
-    )
+    assert req.full_url == "https://example.test/v1/calendar/usd?limit=5"
+    assert req.get_header("X-api-key") == "test-key"
     assert result == {"a": 1}
+
+
+def test_request_omits_api_key_header_without_key(monkeypatch):
+    monkeypatch.delenv("FXMACRODATA_API_KEY", raising=False)
+    monkeypatch.delenv("FXMD_API_KEY", raising=False)
+    client = FXMacroDataClient(base_url="https://example.test/v1")
+    with mock.patch(
+        "urllib.request.urlopen", return_value=_fake_response()
+    ) as urlopen:
+        client.request("calendar/usd")
+    req = urlopen.call_args.args[0]
+    assert not req.has_header("X-api-key")

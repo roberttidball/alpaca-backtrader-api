@@ -22,15 +22,14 @@ class FXMacroDataClient:
 
     def request(self, path, params=None, timeout=None):
         query = dict(params or {})
-        if self.api_key:
-            query["api_key"] = self.api_key
         url = urllib.parse.urljoin(self.base_url, path.lstrip("/"))
         if query:
             url = url + "?" + urllib.parse.urlencode(query)
 
-        req = urllib.request.Request(
-            url, headers={"Accept": "application/json"}
-        )
+        headers = {"Accept": "application/json"}
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+        req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(
                 req, timeout=self.timeout if timeout is None else timeout
