@@ -21,6 +21,10 @@ class FXMacroDataClient:
         self.timeout = timeout
 
     def request(self, path, params=None, timeout=None):
+        """GET one page. History endpoints (announcements, predictions,
+        forex, cot, commodities) return 20 rows by default; pass ``limit``
+        (max 100) and ``offset`` and follow ``pagination.next_offset`` while
+        ``pagination.has_more`` is true."""
         query = dict(params or {})
         url = urllib.parse.urljoin(self.base_url, path.lstrip("/"))
         if query:
