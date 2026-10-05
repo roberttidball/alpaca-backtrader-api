@@ -5,13 +5,21 @@ import urllib.parse
 import urllib.request
 
 
+def _clean_api_key(api_key):
+    api_key = (api_key or "").strip()
+    if any(char.isspace() for char in api_key) or not api_key.isprintable():
+        # Never include the key itself in the message.
+        raise ValueError("FXMacroData API key contains invalid characters")
+    return api_key
+
+
 class FXMacroDataClient:
     """Client for adding macro, calendar, COT, and FX context to strategies."""
 
     DEFAULT_BASE_URL = "https://api.fxmacrodata.com/v1/"
 
     def __init__(self, api_key=None, base_url=None, timeout=30):
-        self.api_key = (
+        self.api_key = _clean_api_key(
             api_key
             or os.getenv("FXMACRODATA_API_KEY")
             or os.getenv("FXMD_API_KEY")
@@ -30,10 +38,13 @@ class FXMacroDataClient:
         if query:
             url = url + "?" + urllib.parse.urlencode(query)
 
-        headers = {"Accept": "application/json"}
+        req = urllib.request.Request(
+            url, headers={"Accept": "application/json"}
+        )
         if self.api_key:
-            headers["X-API-Key"] = self.api_key
-        req = urllib.request.Request(url, headers=headers)
+            # Unredirected headers are not copied onto a followed redirect,
+            # so the key is never forwarded to another host.
+            req.add_unredirected_header("X-API-Key", self.api_key)
         try:
             with urllib.request.urlopen(
                 req, timeout=self.timeout if timeout is None else timeout
@@ -46,7 +57,17 @@ class FXMacroDataClient:
                     exc.code, body
                 )
             )
-        return json.loads(payload)
+        try:
+            data = json.loads(payload)
+        except ValueError:
+            raise RuntimeError(
+                "FXMacroData returned a non-JSON response for {}".format(path)
+            ) from None
+        if isinstance(data, dict) and "detail" in data and "data" not in data:
+            raise RuntimeError(
+                "FXMacroData request failed: {}".format(data["detail"])
+            )
+        return data
 
     def data_catalogue(self, currency):
         return self.request("data_catalogue/" + currency.lower())

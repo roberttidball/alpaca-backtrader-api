@@ -1,4 +1,8 @@
+import urllib.request
+from email.message import Message
 from unittest import mock
+
+import pytest
 
 from alpaca_backtrader_api.fxmacrodata import FXMacroDataClient
 
@@ -54,3 +58,35 @@ def test_request_omits_api_key_header_without_key(monkeypatch):
         client.request("calendar/usd")
     req = urlopen.call_args.args[0]
     assert not req.has_header("X-api-key")
+
+
+def test_request_does_not_forward_api_key_on_redirect():
+    client = FXMacroDataClient(
+        api_key="test-key", base_url="https://example.test/v1"
+    )
+    with mock.patch(
+        "urllib.request.urlopen", return_value=_fake_response()
+    ) as urlopen:
+        client.request("calendar/usd")
+    req = urlopen.call_args.args[0]
+    redirected = urllib.request.HTTPRedirectHandler().redirect_request(
+        req, None, 302, "Found", Message(), "https://elsewhere.test/v1"
+    )
+    assert req.get_header("X-api-key") == "test-key"
+    assert redirected.get_header("X-api-key") is None
+
+
+def test_invalid_api_key_error_does_not_echo_key():
+    with pytest.raises(ValueError) as raised:
+        FXMacroDataClient(api_key="test-key\r\nX-Other: 1")
+    assert "test-key" not in str(raised.value)
+
+
+def test_request_raises_on_error_body_with_200():
+    client = FXMacroDataClient(api_key="", base_url="https://example.test/v1")
+    with mock.patch(
+        "urllib.request.urlopen",
+        return_value=_fake_response(b'{"detail": "Not found"}'),
+    ):
+        with pytest.raises(RuntimeError, match="Not found"):
+            client.request("calendar/usd")
